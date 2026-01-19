@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Divine Favour POS – Licensed</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  width:100%;
+  height:100%;
+  background:#111;
+  font-family:Arial, sans-serif;
+}
+
+#loading{
+  color:#fff;
+  padding:20px;
+}
+
+#posFrame{
+  display:none;
+  width:100%;
+  height:100vh;
+  border:none;
+}
+
+#expiryBanner{
+  position:fixed;
+  bottom:10px;
+  left:0;
+  width:100%;
+  background:#b30000;
+  color:#fff;
+  font-weight:bold;
+  padding:10px 0;
+  text-align:center;
+  display:none;
+  z-index:999999;
+  animation: moveText 12s linear infinite;
+}
+
+@keyframes moveText{
+  0%{ transform:translateX(100%); }
+  100%{ transform:translateX(-100%); }
+}
+
+.overlay{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.95);
+  display:none;
+  justify-content:center;
+  align-items:center;
+  z-index:99999;
+}
+.box{
+  border:3px solid red;
+  padding:30px;
+  max-width:520px;
+  width:90%;
+  text-align:center;
+  background:#000;
+  color:#fff;
+}
+button{
+  margin-top:20px;
+  width:100%;
+  padding:14px;
+  font-size:15px;
+  background:#000;
+  color:#fff;
+  border:1px solid #fff;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="loading">Checking subscription…</div>
+
+<iframe id="posFrame" src="pos.html"></iframe>
+
+<div id="expiryBanner">
+  ⚠ Subscription expires in <span id="timeLeft"></span>
+</div>
+
+<div class="overlay" id="expiredOverlay">
+  <div class="box">
+    <h2>SUBSCRIPTION EXPIRED</h2>
+    <p>Please renew to continue using this POS.</p>
+    <button id="renewBtn">RENEW SUBSCRIPTION</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://js.paystack.co/v1/inline.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "pos-project-d63c0.firebaseapp.com",
+  databaseURL: "https://pos-project-d63c0-default-rtdb.firebaseio.com",
+  projectId: "pos-project-d63c0",
+  storageBucket: "pos-project-d63c0.appspot.com",
+  messagingSenderId: "XXXX",
+  appId: "XXXX"
+};
+firebase.initializeApp(firebaseConfig);
+
+const db = firebase.database();
+const ref = db.ref("licenses/client_pos");
+
+const overlay = document.getElementById("expiredOverlay");
+const frame = document.getElementById("posFrame");
+const loading = document.getElementById("loading");
+const banner = document.getElementById("expiryBanner");
+const timeLeftEl = document.getElementById("timeLeft");
+
+let countdownTimer = null;
+
+function startCountdown(expiryDate){
+  if(countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    const now = new Date();
+    const diff = expiryDate - now;
+    if(diff <= 0){
+      banner.style.display = "none";
+      clearInterval(countdownTimer);
+      return;
+    }
+    const days = Math.floor(diff / (1000*60*60*24));
+    const hours = Math.floor((diff / (1000*60*60)) % 24);
+    const minutes = Math.floor((diff / (1000*60)) % 60);
+    let msg = "";
+    if(days > 1) msg = days + " days left";
+    else if(days === 1) msg = "1 day left";
+    else msg = hours + " hrs " + minutes + " mins left";
+    timeLeftEl.textContent = msg;
+  }, 1000);
+}
+
+function showExpired(){
+  overlay.style.display = "flex";
+  frame.style.display = "none";
+  banner.style.display = "none";
+  loading.style.display = "none";
+}
+
+function showPOS(exp){
+  overlay.style.display = "none";
+  frame.style.display = "block";
+  loading.style.display = "none";
+  const remaining = exp - new Date();
+  const threeDays = 3 * 24 * 60 * 60 * 1000;
+  if(remaining <= threeDays){
+    banner.style.display = "block";
+    startCountdown(exp);
+  }else{
+    banner.style.display = "none";
+  }
+}
+
+ref.once("value").then(snap=>{
+  if(!snap.exists()){ showExpired(); return; }
+  const d = snap.val();
+  if(!d.expiresOn){ showExpired(); return; }
+  const exp = new Date(d.expiresOn);
+  if(isNaN(exp.getTime()) || exp < new Date()){
+    showExpired();
+  }else{
+    showPOS(exp);
+  }
+}).catch(showExpired);
+
+document.getElementById("renewBtn").onclick = function(){
+  PaystackPop.setup({
+    key: "pk_live_65c08dee99b46254052451234c63f20d971d13e7",
+    email: "customer@divinefavourpos.com",
+    amount: 36500 * 100,
+    currency: "NGN",
+    ref: "DFPOS-" + Date.now(),
+    callback: function(){
+      const d = new Date();
+      d.setDate(d.getDate() + 30);
+      ref.update({ expiresOn: d.toISOString(), status:"active" });
+      showPOS(d);
+    }
+  }).openIframe();
+};
+</script>
+
+</body>
+</html>
